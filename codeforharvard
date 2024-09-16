@@ -1,0 +1,115 @@
+#include <WiFi.h>
+#include <TFT_eSPI.h> // Graphics and font library for ILI9341 driver chip
+
+TFT_eSPI tft = TFT_eSPI(); // Create TFT object
+
+const char* ssid = "YourNetworkName"; // Set your network's SSID
+const char* password = "YourPassword"; // Set your network's password
+WiFiServer server(80); // Set the server to run on port 80
+
+const char HTML[] = R"rawliteral(
+<!DOCTYPE HTML>
+<html>
+<head>
+<style>
+  .button {
+    font-size: 40px;
+    padding: 20px 48px;
+  }
+</style>
+</head>
+<body>
+<h1>HQ Warning Device</h1>
+<p><a href="/1"><button class="button">Go</button></a></p>
+<p><a href="/2"><button class="button">Stop</button></a></p>
+<p><a href="/3"><button class="button">Caution</button></a></p>
+</body>
+</html>
+)rawliteral";
+
+void setup() {
+  // initialize serial:
+  Serial.begin(9600);
+
+  tft.init();
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE);
+
+  WiFi.begin(ssid, password); // Connect to WiFi
+
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+
+      tft.drawString("Connecting to HQ..", 10, 10, 2);
+    }
+
+  tft.fillScreen(TFT_BLACK);
+  tft.drawString("Connected to HQ", 10, 10, 2);
+
+  server.begin(); // Start the server
+
+  //print IP address on Serial Monitor
+  IPAddress ip; 
+  ip = WiFi.localIP();
+  Serial.println(ip);
+
+
+}
+
+void loop() {
+WiFiClient client = server.available();  // listen for incoming clients
+
+  if (client) {                     // if you get a client,
+    tft.fillScreen(TFT_BLACK);
+    tft.drawString("HQ connected", 10, 10, 2);
+    Serial.println("New Client.");  // print a message out the serial port
+    String currentLine = "";        // make a String to hold incoming data from the client
+    while (client.connected()) {    // loop while the client's connected
+      if (client.available()) {     // if there's bytes to read from the client,
+        char c = client.read();     // read a byte, then
+        Serial.write(c);            // print it out the serial monitor
+        if (c == 'n') {            // if the byte is a newline character
+
+          // if the current line is blank, you got two newline characters in a row.
+          // that's the end of the client HTTP request, so send a response:
+          if (currentLine.length() == 0) {
+            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
+            // and a content-type so the client knows what's coming, then a blank line:
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:text/html");
+            client.println();
+
+            // the content of the HTTP response follows the header:
+            client.println(HTML);
+
+            // The HTTP response ends with another blank line:
+            client.println();
+            // break out of the while loop:
+            break;
+          } else {  // if you got a newline, then clear currentLine:
+            currentLine = "";
+          }
+        } else if (c != 'r') {  // if you got anything else but a carriage return character,
+          currentLine += c;      // add it to the end of the currentLine
+        }
+
+        // Check to see HQ Warning
+        if (currentLine.endsWith("GET /1")) {
+          tft.drawString("Go", 10, 50, 2);
+        }
+        if (currentLine.endsWith("GET /2")) {
+          tft.drawString("Stop", 10, 50, 2);
+        }
+        if (currentLine.endsWith("GET /3")) {
+          tft.drawString("Caution", 10, 50, 2);
+        }
+       
+      }
+    }
+    // close the connection:
+    client.stop();
+    Serial.println("Client Disconnected.");
+  }
+}
